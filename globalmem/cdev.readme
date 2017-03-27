@@ -1,0 +1,86 @@
+1.关键数据结构和接口
+	cdev.h
+	1.1 数据结构
+		struct cdev {   
+		    struct kobject kobj;                  //内嵌的内核对象.  
+		    struct module *owner;                 //该字符设备所在的内核模块的对象指针.  
+		    const struct file_operations *ops;    //该结构描述了字符设备所能实现的方法，是极为关键的一个结构体.  
+		    struct list_head list;                //用来将已经向内核注册的所有字符设备形成链表.  
+		    dev_t dev;                            //字符设备的设备号，由主设备号和次设备号构成.  
+		    unsigned int count;                   //隶属于同一主设备号的次设备号的个数.  
+		};
+		
+		1. struct cdev 是对字符类设备的抽象
+		/*TODO 需要进一步了解 2*/
+		2. cdev中的kobj使的内核可以管理该设备,比如形成拓扑网络
+		2. cdev中的list使得同类设备形成双向链表
+		3. cdev中的owner模块被加载后内核通过module结构管理,所有持有该模块指针的设备实例可以访问该模块实例
+		4. dev major确定设备的类型,minor确定当前设备的序号
+		/*TODO 需要进一步了解 5*/
+		5. count未知
+		6. 不同种类的字符设备之间是否形成链表?
+	1.2 接口
+		/**
+		 *主要辅助初始化了kobject和list,将两者的操作封装了起来
+ 		 */
+		dev_init(struct cdev *, const struct file_operations *);
+		/**
+		 *相较dev_init,添加了动态cdev实例分配
+		 */
+		struct cdev *cdev_alloc(void);
+		/**
+		 *TODO 进一步了解kobject和module
+ 		 *module和kobject的put操作,调用该函数前先初始化kobj和owner
+		 */
+		void cdev_put(struct cdev *p);
+		/**
+		 *添加cdev设备到系统并立即使其可用
+		 */
+		int cdev_add(struct cdev *, dev_t, unsigned);
+		/**
+		 *将设备从系统移除,并且有可能释放cdev结构
+ 		 */
+		void cdev_del(struct cdev *);
+		/**
+		 *TODO
+ 		 *接触和inode的关联?
+		 */
+		void cd_forget(struct inode *);
+
+2.操作流程
+	1.初始化
+	2.设备注册
+	3.设备使用
+	4.设备注销
+
+3.编码学习
+
+	1.良好的注释
+	2.简介清晰的编码
+	3.清晰的接口设计
+/**
+ * cdev_add() - add a char device to the system
+ * @p: the cdev structure for the device
+ * @dev: the first device number for which this device is responsible
+ * @count: the number of consecutive minor numbers corresponding to this
+ *         device
+ *
+ * cdev_add() adds the device represented by @p to the system, making it
+ * live immediately.  A negative error code is returned on failure.
+ */
+int cdev_add(struct cdev *p, dev_t dev, unsigned count)
+{
+	int error;
+
+	p->dev = dev;
+	p->count = count;
+
+	error = kobj_map(cdev_map, dev, count, NULL,
+			 exact_match, exact_lock, p);
+	if (error)
+		return error;
+
+	kobject_get(p->kobj.parent);
+
+	return 0;
+}
